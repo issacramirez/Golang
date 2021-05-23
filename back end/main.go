@@ -4,14 +4,18 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 
 	_ "github.com/denisenkom/go-mssqldb"
+	jwt "github.com/dgrijalva/jwt-go"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 )
+
+const SecretKey = "secret"
 
 // modelo de la tabla Student
 type (
@@ -19,6 +23,11 @@ type (
 		Id     int    `json:"id"`
 		Nombre string `json:"nombre"`
 		Edad   string `json:"edad"`
+	}
+
+	JwtClaims struct {
+		Name string `json:"name"`
+		jwt.StandardClaims
 	}
 )
 
@@ -103,8 +112,43 @@ func UpdateStudent(c echo.Context) error {
 	return c.JSON(http.StatusOK, student)
 }
 
+func login(c echo.Context) error {
+	username := c.FormValue("username")
+	password := c.FormValue("password")
+
+	if username != "sa" && password != "1234" {
+		return echo.ErrUnauthorized
+	}
+
+	token, err := createJwtToken()
+	if err != nil {
+		log.Println("error creando el jwt token", err)
+		return c.String(http.StatusInternalServerError, "Algo salió mal al intentar crear el token")
+	}
+	return c.JSON(http.StatusOK, map[string]string{
+		"message": "You are logged in",
+		"token":   token,
+	})
+}
+
+func createJwtToken() (string, error) {
+	t := jwt.New(jwt.SigningMethodHS256)
+
+	claims := t.Claims.(jwt.MapClaims)
+	claims["name"] = "José Issac"
+	claims["type"] = "admin"
+	claims["exp"] = time.Now().Add(time.Hour * 24).Unix()
+
+	token, err := t.SignedString([]byte(SecretKey))
+	if err != nil {
+		return "Error creando el token", err
+	}
+	return token, nil
+}
+
 func main() {
 	e := echo.New()
+	jwtGroups := e.Group("/jwt")
 
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
@@ -116,12 +160,24 @@ func main() {
 	// prueba de que funciona la conexion a DB
 	connectionSql()
 
+	jwtGroups.Use(middleware.JWTWithConfig(middleware.JWTConfig{
+		SigningMethod: "HS256",
+		SigningKey:    []byte(SecretKey),
+	}))
+
+	// e.Use(middleware.JWTWithConfig(middleware.JWTConfig{
+	// 	SigningMethod: "HS256",
+	// 	SigningKey:    []byte(SecretKey),
+	// }))
+
+	e.POST("/login", login)
+
 	// peticiones para url
-	e.GET("/Students", AllStudents)
-	e.POST("/Students", NewStudent)
-	e.DELETE("/Students/:id", DeleteStudent)
-	e.GET("/Students/:id", GetStudent)
-	e.PUT("/Students/:id", UpdateStudent)
+	jwtGroups.GET("/Students", AllStudents)
+	jwtGroups.POST("/Students", NewStudent)
+	jwtGroups.DELETE("/Students/:id", DeleteStudent)
+	jwtGroups.GET("/Students/:id", GetStudent)
+	jwtGroups.PUT("/Students/:id", UpdateStudent)
 
 	e.Logger.Fatal(e.Start("localhost:1323"))
 }
