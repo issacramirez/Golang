@@ -112,14 +112,15 @@ func UpdateStudent(c echo.Context) error {
 	return c.JSON(http.StatusOK, student)
 }
 
+// funcion para "iniciar sesion" y generar el token
 func login(c echo.Context) error {
 	username := c.FormValue("username")
 	password := c.FormValue("password")
 
-	if username != "sa" && password != "1234" {
+	// autorizacion de usuario
+	if username != "sa" || password != "1234" {
 		return echo.ErrUnauthorized
 	}
-
 	token, err := createJwtToken()
 	if err != nil {
 		log.Println("error creando el jwt token", err)
@@ -131,6 +132,7 @@ func login(c echo.Context) error {
 	})
 }
 
+// genera el token
 func createJwtToken() (string, error) {
 	t := jwt.New(jwt.SigningMethodHS256)
 
@@ -148,6 +150,7 @@ func createJwtToken() (string, error) {
 
 func main() {
 	e := echo.New()
+	// grupo para los end points que necesitan autorizacion jwt
 	jwtGroups := e.Group("/jwt")
 
 	e.Use(middleware.Logger())
@@ -160,16 +163,13 @@ func main() {
 	// prueba de que funciona la conexion a DB
 	connectionSql()
 
+	// restriccion que tendrá autorizacion JWT
 	jwtGroups.Use(middleware.JWTWithConfig(middleware.JWTConfig{
 		SigningMethod: "HS256",
 		SigningKey:    []byte(SecretKey),
 	}))
 
-	// e.Use(middleware.JWTWithConfig(middleware.JWTConfig{
-	// 	SigningMethod: "HS256",
-	// 	SigningKey:    []byte(SecretKey),
-	// }))
-
+	// este endpoint no tiene seguridad con el fin de que entregue el token
 	e.POST("/login", login)
 
 	// peticiones para url
@@ -179,5 +179,6 @@ func main() {
 	jwtGroups.GET("/Students/:id", GetStudent)
 	jwtGroups.PUT("/Students/:id", UpdateStudent)
 
+	// inicio del servidor
 	e.Logger.Fatal(e.Start("localhost:1323"))
 }
